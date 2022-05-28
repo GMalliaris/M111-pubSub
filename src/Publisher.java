@@ -53,13 +53,16 @@ public class Publisher {
                 .map(Publisher::parseCommand)
                 .filter(element -> Publisher.commandIsValid(element[1]))
                 .forEach(element -> {
-                    var waitInterval = Integer.parseInt(element[0]) * 1000; // in milliseconds
                     try {
+                        var waitInterval = Integer.parseInt(element[0]) * 1000; // in milliseconds
                         Thread.sleep(waitInterval);
                         sendCommandAndWaitForOK(brokerSocket, element[1]);
 
                     } catch (InterruptedException e) {
                         e.printStackTrace();
+                        Thread.currentThread().interrupt();
+                    } catch (NumberFormatException e){
+                        System.err.printf("Invalid wait interval: '%s'%n", element[0]);
                         Thread.currentThread().interrupt();
                     }
                 });
