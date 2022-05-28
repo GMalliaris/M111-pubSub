@@ -1,0 +1,21 @@
+Broker
+1) Accepts connection -> blocking operation
+2) Reads on pubPort -> blocking operation
+    When message is published then send to subs then send OK
+3) Reads on subPort -> blocking operation
+    When sub then add to sub struct
+    When unsub then remove from sub struct
+    Reply OK anyway
+
+Publisher/Subscriber
+1)Connects to broker
+2)Connect to own port
+3)Send SUB_ID COMMAND TOPIC to broker
+4)Read once from own port for OK
+5)Executes commands from file
+
+6 - Only for subscriber)Read on broker port for messages -> blocking operation
+    Print message when arrives
+7)Read on commandline for commands -> blocking operation
+    Send command to broker port
+    Read once from own port for OK
