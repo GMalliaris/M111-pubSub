@@ -56,11 +56,20 @@ public class Broker {
             publishersSocket = new ServerSocket(pubPort);
             subscribersSocket = new ServerSocket(subPort);
             var pubMainThread = new Thread(pubMainRunnable());
-            pubMainThread.start();
             var subMainThread = new Thread(subMainRunnable());
+            pubMainThread.start();
             subMainThread.start();
+            pubMainThread.join();
+            subMainThread.join();
         } catch (IOException e) {
-            e.printStackTrace();
+            if (!shutDown){
+                e.printStackTrace();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            if (!shutDown){
+                e.printStackTrace();
+            }
         }
     }
 
@@ -70,7 +79,9 @@ public class Broker {
             while (true) {
                 try {
                     var subSocket = subscribersSocket.accept();
-                    openSockets.add(subSocket);
+                    synchronized (openSockets){
+                        openSockets.add(subSocket);
+                    }
                     var subSlaveThread = new Thread(() -> readSubCommandAndReply(subSocket));
                     subSlaveThread.start();
                 } catch (IOException e) {

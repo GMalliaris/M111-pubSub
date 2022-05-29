@@ -13,28 +13,49 @@ public class Publisher {
     private static String brokerIp;
     private static int brokerPort;
     private static String commandFile;
+    private static Socket brokerSocket;
+    private static boolean shutDown = false;
 
-    public static void main(String[] args) throws InterruptedException, IOException {
+    private static Runnable gracefulShutdownRunnable() {
+        return () -> {
+            shutDown = true;
+            if (brokerSocket != null && !brokerSocket.isClosed()){
+                try {
+                    brokerSocket.close();
+                } catch (IOException e) {
+                    System.err.println("Failed to close broker socket");
+                }
+            }
+            System.out.println("Closed broker socket");
+        };
+    }
+
+    public static void main(String[] args) {
+
         validateArgs(args);
+
+        Runtime.getRuntime().addShutdownHook(new Thread(gracefulShutdownRunnable()));
 
 
         List<String> commands = commandFile == null ? List.of()
                 : readCommandsFromFile(commandFile);
-        try (var brokerSocket = new Socket(brokerIp, brokerPort, InetAddress.getLocalHost(), port);
-             var cmdScanner = new Scanner(System.in)){
-            sendCommandsFromFileToBroker(commands, brokerSocket);
+        try (var cmdScanner = new Scanner(System.in)){
+            brokerSocket = new Socket(brokerIp, brokerPort, InetAddress.getLocalHost(), port);
+            sendCommandsFromFileToBroker(commands);
 
             System.out.println("\nPlease enter a command in the following format: <PUB_ID COMMAND TOPIC MESSAGE>");
             var userInput = cmdScanner.nextLine();
             while (userInput != null){
                 if (commandIsValid(userInput)){
-                    sendCommandAndWaitForOK(brokerSocket, userInput);
+                    sendCommandAndWaitForOK(userInput);
                 }
                 System.out.println("\nPlease enter a command in the following format: <PUB_ID COMMAND TOPIC MESSAGE>");
                 userInput = cmdScanner.nextLine();
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            if (!shutDown){
+                e.printStackTrace();
+            }
         }
     }
 
@@ -48,7 +69,7 @@ public class Publisher {
         return true;
     }
 
-    private static void sendCommandsFromFileToBroker(List<String> commands, Socket brokerSocket) {
+    private static void sendCommandsFromFileToBroker(List<String> commands) {
         commands.stream()
                 .map(Publisher::parseCommand)
                 .filter(element -> Publisher.commandIsValid(element[1]))
@@ -56,14 +77,15 @@ public class Publisher {
                     try {
                         var waitInterval = Integer.parseInt(element[0]) * 1000; // in milliseconds
                         Thread.sleep(waitInterval);
-                        sendCommandAndWaitForOK(brokerSocket, element[1]);
+                        sendCommandAndWaitForOK(element[1]);
 
                     } catch (InterruptedException e) {
-                        e.printStackTrace();
+                        if (!shutDown){
+                            e.printStackTrace();
+                        }
                         Thread.currentThread().interrupt();
                     } catch (NumberFormatException e){
                         System.err.printf("Invalid wait interval: '%s'%n", element[0]);
-                        Thread.currentThread().interrupt();
                     }
                 });
     }
@@ -90,7 +112,7 @@ public class Publisher {
         return commands;
     }
 
-    public static void sendCommandAndWaitForOK(Socket brokerSocket, String command){
+    public static void sendCommandAndWaitForOK(String command){
         try {
             var socketOutStream = new PrintWriter(brokerSocket.getOutputStream(), true);
             var socketInStream = new BufferedReader(new InputStreamReader(brokerSocket.getInputStream()));
@@ -107,7 +129,9 @@ public class Publisher {
                 System.out.println(String.format("Published message for topic %s: %s", split[2], split[3]));
             }
         } catch (IOException e) {
-            e.printStackTrace();
+            if (!shutDown){
+                e.printStackTrace();
+            }
         }
     }
 

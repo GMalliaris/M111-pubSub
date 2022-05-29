@@ -1,4 +1,3 @@
-s1 sub #hello
-s1 sub #world
-s1 unsub #hello
-s1 sub #great
+2 sub #hello
+5 sub #world
+5 sub #great
