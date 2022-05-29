@@ -15,6 +15,7 @@ public class Subscriber {
     private static String commandFile;
     private static Socket brokerSocket;
     private static boolean shutDown = false;
+    private static String pendingCommand = null;
 
     private static Runnable gracefulShutdownRunnable() {
         return () -> {
@@ -44,24 +45,15 @@ public class Subscriber {
             var readOnPortThread = new Thread(readOnPortRunnable());
             readOnPortThread.start();
 
-//            System.out.println("\nPlease enter a command in the following format: <SUB_ID COMMAND TOPIC>");
-//            var userInput = cmdScanner.nextLine();
-//            while (userInput != null){
-//                if (commandIsValid(userInput)){
-//                    sendCommandAndWaitForOK(userInput);
-//                }
-//                System.out.println("\nPlease enter a command in the following format: <SUB_ID COMMAND TOPIC>");
-//                userInput = cmdScanner.nextLine();
-//            }
-//            System.out.println("\nPlease enter a command in the following format: <PUB_ID COMMAND TOPIC MESSAGE>");
-//            var userInput = cmdScanner.nextLine();
-//            while (userInput != null){
-//                if (commandIsValid(userInput)){
-//                    sendCommandAndWaitForOK(brokerSocket, userInput);
-//                }
-//                System.out.println("\nPlease enter a command in the following format: <PUB_ID COMMAND TOPIC MESSAGE>");
-//                userInput = cmdScanner.nextLine();
-//            }
+            System.out.println("\nPlease enter a command in the following format: <SUB_ID COMMAND TOPIC>");
+            var userInput = cmdScanner.nextLine();
+            while (userInput != null){
+                if (commandIsValid(userInput)){
+                    sendCommand(userInput);
+                }
+                System.out.println("\nPlease enter a command in the following format: <SUB_ID COMMAND TOPIC>");
+                userInput = cmdScanner.nextLine();
+            }
         } catch (IOException e) {
             if (!shutDown){
                 e.printStackTrace();
@@ -76,7 +68,19 @@ public class Subscriber {
                 var message = socketInStream.readLine();
                 while (message != null){
                     var split = message.split(" ", 2);
-                    System.out.printf("Received msg for topic %s: %s%n", split[0], split[1]);
+                    if ("OK".equals(split[0])){
+                        var completedCommand = removePendingCommand();
+                        var cmdSplit = completedCommand.split(" ", 3);
+                        if ("sub".equals(cmdSplit[1])){
+                            System.out.println(String.format("Subscribed to topic: %s", cmdSplit[2]));
+                        }
+                        else{
+                            System.out.println(String.format("Unsubscribed from topic: %s", cmdSplit[2]));
+                        }
+                    }
+                    else{
+                        System.out.printf("Received msg for topic %s: %s%n", split[0], split[1]);
+                    }
                     message = socketInStream.readLine();
                 }
             } catch (IOException e) {
@@ -106,7 +110,21 @@ public class Subscriber {
                 });
     }
 
-    public static void sendCommandAndWaitForOK(String command){
+    private static void sendCommand(String command) {
+        if (!addPendingCommand(command)) {
+            return;
+        }
+        try {
+            var socketOutStream = new PrintWriter(brokerSocket.getOutputStream(), true);
+            socketOutStream.println(command);
+        } catch (IOException e) {
+            if (!shutDown){
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static void sendCommandAndWaitForOK(String command) {
         try {
             var socketOutStream = new PrintWriter(brokerSocket.getOutputStream(), true);
             var socketInStream = new BufferedReader(new InputStreamReader(brokerSocket.getInputStream()));
@@ -115,7 +133,6 @@ public class Subscriber {
             while (!"OK".equals(response)){
                 if (response == null){
                     System.err.println("Couldn't connect to broker");
-                    // maybe exit and cleanup?
                 }
                 else {
                     var split = response.split(" ", 2);
@@ -130,23 +147,6 @@ public class Subscriber {
             else {
                 System.out.println(String.format("Unsubscribed from topic: %s", split[2]));
             }
-//            if (response == null){
-//                System.err.println("Couldn't connect to broker");
-//                // maybe exit and cleanup?
-//            }
-//            else if (!"OK".equals(response)){
-//                var split = response.split(" ", 2);
-//                System.out.printf("Received msg for topic %s: %s%n", split[0], split[1]);
-//            }
-//            else {
-//                var split = command.split(" ", 3);
-//                if ("sub".equals(split[1])){
-//                    System.out.println(String.format("Subscribed to topic: %s", split[2]));
-//                }
-//                else {
-//                    System.out.println(String.format("Unsubscribed from topic: %s", split[2]));
-//                }
-//            }
         } catch (IOException e) {
             if (!shutDown){
                 e.printStackTrace();
@@ -262,5 +262,22 @@ public class Subscriber {
         Subscriber.id = id;
         Subscriber.brokerIp = brokerIp;
         Subscriber.commandFile = commandFile;
+    }
+
+    private static synchronized boolean addPendingCommand(String command){
+        if (pendingCommand == null){
+            pendingCommand = command;
+            return true;
+        }
+        else {
+            System.err.println(String.format("There is already a pending command: '%s'", pendingCommand));
+        }
+        return false;
+    }
+
+    private static synchronized String removePendingCommand(){
+        var command = pendingCommand;
+        pendingCommand = null;
+        return command;
     }
 }
