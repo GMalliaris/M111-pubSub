@@ -157,12 +157,21 @@ public class Subscriber {
     private static boolean commandIsValid(String userInput) {
 
         var split = userInput.split(" ", 3);
-        if (split.length != 3 || !id.equals(split[0])
-                || (!"sub".equals(split[1]) && !"unsub".equals(split[1]))){
-            System.err.println(String.format("Invalid command: '%s'", userInput));
-            return false;
+
+        var isValid = true;
+        if (split.length != 3){
+            System.err.println("Invalid command format");
+            isValid = false;
         }
-        return true;
+        if (!id.equals(split[0])){
+            System.err.printf("Invalid id: '%s'%n", split[0]);
+            isValid = false;
+        }
+        if (!"sub".equals(split[1]) && !"unsub".equals(split[1])){
+            System.err.printf("Invalid command: '%s'%n", split[1]);
+            isValid = false;
+        }
+        return isValid;
     }
 
     private static String[] parseCommand(String command){

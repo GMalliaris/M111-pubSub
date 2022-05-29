@@ -62,11 +62,20 @@ public class Publisher {
     private static boolean commandIsValid(String userInput) {
 
         var split = userInput.split(" ", 4);
-        if (split.length != 4 || !id.equals(split[0]) || !"pub".equals(split[1])){
-            System.err.println("Invalid command");
-            return false;
+
+        var isValid = true;
+        if (split.length != 4) {
+            System.err.println("Invalid command format");
+            isValid = false;
         }
-        return true;
+        if (!id.equals(split[0])) {
+            System.err.printf("Invalid id: '%s'%n", split[0]);
+            isValid = false;
+        }
+        if (!"pub".equals(split[1])) {
+            System.err.printf("Invalid command: '%s'%n", split[1]);
+        }
+        return isValid;
     }
 
     private static void sendCommandsFromFileToBroker(List<String> commands) {
