@@ -96,7 +96,10 @@ public class Publisher {
             var socketInStream = new BufferedReader(new InputStreamReader(brokerSocket.getInputStream()));
             socketOutStream.println(command);
             var response = socketInStream.readLine();
-            if (!"OK".equals(response)){
+            if (response == null){
+                System.err.println("Couldn't connect to broker");
+            }
+            else if (!"OK".equals(response)){
                 System.err.println(String.format("Got response '%s' for command '%s'", response, command));
             }
             else {

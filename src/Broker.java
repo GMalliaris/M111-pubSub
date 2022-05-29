@@ -1,7 +1,4 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
@@ -14,32 +11,93 @@ public class Broker {
     private static final Map<String, Socket> subscriberSockets = new HashMap<>();
     private static int subPort;
     private static int pubPort;
+    private static ServerSocket publishersSocket;
+    private static ServerSocket subscribersSocket;
+    private static final List<Socket> openSockets = new LinkedList<>();
+    private static boolean shutDown = false;
+
+    private static void closeServerSocket(ServerSocket serverSocket, String errMsg){
+        if (serverSocket != null && !serverSocket.isClosed()){
+            try {
+                serverSocket.close();
+            } catch (IOException e) {
+                System.err.println(errMsg);
+            }
+        }
+    }
+
+    private static void closeSocket(Socket socket, String errMsg){
+        if (socket != null && !socket.isClosed()){
+            try {
+                socket.close();
+            } catch (IOException e) {
+                System.err.println(errMsg);
+            }
+        }
+    }
+
+    private static Runnable gracefulShutdownRunnable() {
+        return () -> {
+            shutDown = true;
+            openSockets.forEach(socket -> closeSocket(socket, String.format("Failed to close socket port: %d", socket.getPort())));
+            closeServerSocket(publishersSocket, "Failed to close publishers' socket");
+            closeServerSocket(subscribersSocket, "Failed to close subscribers' socket");
+            System.out.println("Closed open sockets");
+        };
+    }
 
     public static void main(String[] args) throws IOException {
 
-//        Runtime.getRuntime().addShutdownHook(new Thread(){public void run(){
-//            try {
-//                socket.close();
-//                System.out.println("The server is shut down!");
-//            } catch (IOException e) { /* failed */ }
-//        }});
-
         validateArgs(args);
 
-        try (var pubServerSocket = new ServerSocket(pubPort);
-            var subServerSocket = new ServerSocket(subPort)) {
-//            1 socket for pubServerSocket.accept and 1 socket for each pub
-//            while (true) {
-//                var pubSocket = pubServerSocket.accept();
-//                readPubCommandAndReply(pubSocket);
-//            }
-//            while (true) {
-//                var subSocket = subServerSocket.accept();
-//                readSubCommandAndReply(subSocket);
-//            }
+        Runtime.getRuntime().addShutdownHook(new Thread(gracefulShutdownRunnable()));
+
+        try {
+            publishersSocket = new ServerSocket(pubPort);
+            subscribersSocket = new ServerSocket(subPort);
+            var pubMainThread = new Thread(pubMainRunnable());
+            pubMainThread.start();
+            var subMainThread = new Thread(subMainRunnable());
+            subMainThread.start();
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    private static Runnable subMainRunnable(){
+
+        return () -> {
+            while (true) {
+                try {
+                    var subSocket = subscribersSocket.accept();
+                    openSockets.add(subSocket);
+                    var subSlaveThread = new Thread(() -> readSubCommandAndReply(subSocket));
+                    subSlaveThread.start();
+                } catch (IOException e) {
+                    if (!shutDown){
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+    }
+
+    private static Runnable pubMainRunnable(){
+
+        return () -> {
+            while (true) {
+                try {
+                    var pubSocket = publishersSocket.accept();
+                    openSockets.add(pubSocket);
+                    var pubSlaveThread = new Thread(() -> readPubCommandAndReply(pubSocket));
+                    pubSlaveThread.start();
+                } catch (IOException e) {
+                    if (!shutDown){
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
     }
 
     private static void validateArgs(String[] args){
@@ -105,36 +163,34 @@ public class Broker {
     }
 
     private static void readPubCommandAndReply(Socket pubSocket){
-        try (var pubOutStream = new PrintWriter(pubSocket.getOutputStream(), true);
-             var pubInStream = new BufferedReader(new InputStreamReader(pubSocket.getInputStream()))  ){
-
+        try {
+            var pubOutStream = new PrintWriter(pubSocket.getOutputStream(), true);
+            var pubInStream = new BufferedReader(new InputStreamReader(pubSocket.getInputStream()));
             var inputLine = pubInStream.readLine();
             while (inputLine != null) {
-                Thread.sleep(1000);
                 // send msg to subs
                 var split = inputLine.split(" ", 4);
-                sendMessageToTopic(split[3], split[2]);
+                sendMessageForTopic(split[3], split[2]);
                 pubOutStream.println("OK");
                 inputLine = pubInStream.readLine();
             }
-        } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
-            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+            if (!shutDown){
+                e.printStackTrace();
+            }
         }
     }
 
     private static void readSubCommandAndReply(Socket subSocket){
-        try (var subOutStream = new PrintWriter(subSocket.getOutputStream(), true);
-             var subInStream = new BufferedReader(new InputStreamReader(subSocket.getInputStream()))  ){
-
+        try {
+            var subOutStream = new PrintWriter(subSocket.getOutputStream(), true);
+            var subInStream = new BufferedReader(new InputStreamReader(subSocket.getInputStream()));
             var inputLine = subInStream.readLine();
             while (inputLine != null) {
-                Thread.sleep(1000);
+                synchronizedLog(String.format("Got command: %s", inputLine));
                 var split = inputLine.split(" ", 3);
                 synchronized (subscriberSockets){
-                    if (subscriberSockets.get(split[0]) == null) {
-                        subscriberSockets.put(split[0], subSocket);
-                    }
+                    subscriberSockets.putIfAbsent(split[0], subSocket);
                 }
                 if ("sub".equals(split[1])){
                     subscribeToTopic(split[0], split[2]);
@@ -145,9 +201,10 @@ public class Broker {
                 subOutStream.println("OK");
                 inputLine = subInStream.readLine();
             }
-        } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
-            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+            if (!shutDown){
+                e.printStackTrace();
+            }
         }
     }
 
@@ -167,7 +224,7 @@ public class Broker {
         }
     }
 
-    private static void sendMessageToTopic(String message, String topic){
+    private static void sendMessageForTopic(String message, String topic){
 
         List<Socket> subsSockets;
         synchronized (topicSubscribers){
@@ -179,11 +236,13 @@ public class Broker {
             }
         }
         subsSockets.forEach(subSocket -> {
-            try (var clientOutStream = new PrintWriter(subSocket.getOutputStream(), true)){
+            try {
+                var clientOutStream = new PrintWriter(subSocket.getOutputStream(), true);
                 clientOutStream.println(String.format("%s %s", topic, message));
             } catch (IOException e) {
-                e.printStackTrace();
-                Thread.currentThread().interrupt();
+                if (!shutDown){
+                    e.printStackTrace();
+                }
             }
         });
     }

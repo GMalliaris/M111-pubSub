@@ -1,5 +1,6 @@
-import java.io.File;
-import java.io.FileNotFoundException;
+import java.io.*;
+import java.net.InetAddress;
+import java.net.Socket;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Scanner;
@@ -12,19 +13,114 @@ public class Subscriber {
     private static String brokerIp;
     private static int brokerPort;
     private static String commandFile;
+    private static Socket brokerSocket;
 
     public static void main(String[] args) {
         validateArgs(args);
 
         List<String> commands = commandFile == null ? List.of()
                 : readCommandsFromFile(commandFile);
+        try {
+//            clean this up
+            brokerSocket = new Socket(brokerIp, brokerPort, InetAddress.getLocalHost(), port);
+            sendCommandsFromFileToBroker(commands, brokerSocket);
+
+            var readOnPortThread = new Thread(readOnPortRunnable());
+            readOnPortThread.start();
+//            System.out.println("\nPlease enter a command in the following format: <PUB_ID COMMAND TOPIC MESSAGE>");
+//            var userInput = cmdScanner.nextLine();
+//            while (userInput != null){
+//                if (commandIsValid(userInput)){
+//                    sendCommandAndWaitForOK(brokerSocket, userInput);
+//                }
+//                System.out.println("\nPlease enter a command in the following format: <PUB_ID COMMAND TOPIC MESSAGE>");
+//                userInput = cmdScanner.nextLine();
+//            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static Runnable readOnPortRunnable(){
+        return () -> {
+            try {
+                var socketInStream = new BufferedReader(new InputStreamReader(brokerSocket.getInputStream()));
+                var message = socketInStream.readLine();
+                while (message != null){
+                    var split = message.split(" ", 2);
+                    System.out.printf("Received msg for topic %s: %s%n", split[0], split[1]);
+                    message = socketInStream.readLine();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        };
+    }
+
+    private static void sendCommandsFromFileToBroker(List<String> commands, Socket brokerSocket) {
+        commands.stream()
+                .map(Subscriber::parseCommand)
+                .filter(element -> Subscriber.commandIsValid(element[1]))
+                .forEach(element -> {
+                    try {
+                        var waitInterval = Integer.parseInt(element[0]) * 1000; // in milliseconds
+                        Thread.sleep(waitInterval);
+                        sendCommandAndWaitForOK(brokerSocket, element[1]);
+
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                        Thread.currentThread().interrupt();
+                    } catch (NumberFormatException e){
+                        System.err.printf("Invalid wait interval: '%s'%n", element[0]);
+                        Thread.currentThread().interrupt();
+                    }
+                });
+    }
+
+    public static void sendCommandAndWaitForOK(Socket brokerSocket, String command){
+        try {
+            var socketOutStream = new PrintWriter(brokerSocket.getOutputStream(), true);
+            var socketInStream = new BufferedReader(new InputStreamReader(brokerSocket.getInputStream()));
+            socketOutStream.println(command);
+            var response = socketInStream.readLine();
+            if (!"OK".equals(response)){
+                System.err.println(String.format("Got response '%s' for command '%s'", response, command));
+            }
+            else {
+                var split = command.split(" ", 3);
+                if ("sub".equals(split[1])){
+                    System.out.println(String.format("Subscribed to topic: %s", split[2]));
+                }
+                else {
+                    System.out.println(String.format("Unsubscribed from topic: %s", split[2]));
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static boolean commandIsValid(String userInput) {
+
+        var split = userInput.split(" ", 3);
+        if (split.length != 3 || !id.equals(split[0])
+                || (!"sub".equals(split[1]) && !"unsub".equals(split[1]))){
+            System.err.println(String.format("Invalid command: '%s'", userInput));
+            return false;
+        }
+        return true;
+    }
+
+    private static String[] parseCommand(String command){
+        var split = command.split(" ", 2);
+        return new String[]{split[0], String.format("%s %s", id, split[1])};
     }
 
     private static List<String> readCommandsFromFile(String commandFile) {
 
         var commands = new LinkedList<String>();
         var file = new File(commandFile);
-        try(var scanner = new Scanner(file);) {
+        try(var scanner = new Scanner(file)) {
             while (scanner.hasNextLine()){
                 var command = scanner.nextLine();
                 commands.add(command);
