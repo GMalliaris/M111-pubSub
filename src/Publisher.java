@@ -43,6 +43,8 @@ public class Publisher {
             brokerSocket = new Socket(brokerIp, brokerPort, InetAddress.getLocalHost(), port);
             sendCommandsFromFileToBroker(commands);
 
+            System.out.printf("Publisher with id: '%s' is up!%n", id);
+
             System.out.println("\nPlease enter a command in the following format: <PUB_ID COMMAND TOPIC MESSAGE>");
             var userInput = cmdScanner.nextLine();
             while (userInput != null){

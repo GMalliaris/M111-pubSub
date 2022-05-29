@@ -45,6 +45,8 @@ public class Subscriber {
             var readOnPortThread = new Thread(readOnPortRunnable());
             readOnPortThread.start();
 
+            System.out.printf("Subscriber with id: '%s' is up!%n", id);
+
             System.out.println("\nPlease enter a command in the following format: <SUB_ID COMMAND TOPIC>");
             var userInput = cmdScanner.nextLine();
             while (userInput != null){

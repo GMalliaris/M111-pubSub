@@ -1,4 +1,7 @@
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
@@ -59,6 +62,7 @@ public class Broker {
             var subMainThread = new Thread(subMainRunnable());
             pubMainThread.start();
             subMainThread.start();
+            System.out.println("Broker is up!");
             pubMainThread.join();
             subMainThread.join();
         } catch (IOException e) {
@@ -179,7 +183,7 @@ public class Broker {
             var pubInStream = new BufferedReader(new InputStreamReader(pubSocket.getInputStream()));
             var inputLine = pubInStream.readLine();
             while (inputLine != null) {
-                // send msg to subs
+                synchronizedLog(String.format("Command from publisher: %s", inputLine));
                 var split = inputLine.split(" ", 4);
                 sendMessageForTopic(split[3], split[2]);
                 pubOutStream.println("OK");
@@ -198,7 +202,7 @@ public class Broker {
             var subInStream = new BufferedReader(new InputStreamReader(subSocket.getInputStream()));
             var inputLine = subInStream.readLine();
             while (inputLine != null) {
-                synchronizedLog(String.format("Got command: %s", inputLine));
+                synchronizedLog(String.format("Command from subscriber: %s", inputLine));
                 var split = inputLine.split(" ", 3);
                 synchronized (subscriberSockets){
                     subscriberSockets.putIfAbsent(split[0], subSocket);
