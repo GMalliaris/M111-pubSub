@@ -1,22 +1,0 @@
-
-s
-java:S3008	"VRename this field "PORT_NUMBER" to match the regular expression '^[a-z][a-zA-Z0-9]*$'.(ˆ´ğ¿8Ş»šÚ0
-}
-java:S3008
-"[Rename this field "connection_count" to match the regular expression '^[a-z][a-zA-Z0-9]*$'.(—¬ÍÖşÿÿÿÿ8Ş»šÚ0
-u
-java:S3008"XRename this field "request_count" to match the regular expression '^[a-z][a-zA-Z0-9]*$'.(Â‡Ú½8Ş»šÚ0
-Z	java:S106"9Replace this use of System.out or System.err by a logger.(í°ò¬ùÿÿÿÿ8ä»šÚ0
-Z	java:S106"9Replace this use of System.out or System.err by a logger.(Š‡Å¾úÿÿÿÿ8ä»šÚ0
-U	java:S106 "9Replace this use of System.out or System.err by a logger.(¯ªÅ•8å»šÚ0
-]	java:S125!"<This block of commented-out lines of code should be removed.(Î¡¨øøÿÿÿÿ8æ»šÚ0
-U	java:S1060"9Replace this use of System.out or System.err by a logger.(¶ßç8ç»šÚ0
-{
-java:S2142C"^Either re-interrupt this method or rethrow the "InterruptedException" that can be caught here.(ò¶È8è»šÚ0
-U	java:S106?"9Replace this use of System.out or System.err by a logger.(Ä¡éå8ê»šÚ0
-S
-java:S2696A"6Make the enclosing method "static" or remove this set.(İ¶ˆÕ8ê»šÚ0
-L
-java:S20937"*Change this "try" to a try-with-resources.(¡»¢üùÿÿÿÿ8ì»šÚ0
-D
-java:S2189""Add an end condition to this loop.(˜ïˆÿÿÿÿÿ8†¼šÚ0

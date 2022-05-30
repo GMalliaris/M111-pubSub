@@ -17,8 +17,22 @@ public class Subscriber {
     private static boolean shutDown = false;
     private static String pendingCommand = null;
 
+    private static void sendExitCommand(){
+        if (brokerSocket == null || brokerSocket.isClosed()){
+            return;
+        }
+        try {
+            var socketOutStream = new PrintWriter(brokerSocket.getOutputStream(), true);
+            socketOutStream.println(String.format("%s exit", id));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     private static Runnable gracefulShutdownRunnable() {
         return () -> {
+
+            sendExitCommand();
             shutDown = true;
             if (brokerSocket != null && !brokerSocket.isClosed()){
                 try {

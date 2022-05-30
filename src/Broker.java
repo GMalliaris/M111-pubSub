@@ -12,6 +12,7 @@ public class Broker {
 
     private static final Map<String, Set<String>> topicSubscribers = new HashMap<>();
     private static final Map<String, Socket> subscriberSockets = new HashMap<>();
+    private static final Map<String, Socket> publisherSockets = new HashMap<>();
     private static int subPort;
     private static int pubPort;
     private static ServerSocket publishersSocket;
@@ -103,7 +104,9 @@ public class Broker {
             while (true) {
                 try {
                     var pubSocket = publishersSocket.accept();
-                    openSockets.add(pubSocket);
+                    synchronized (openSockets){
+                        openSockets.add(pubSocket);
+                    }
                     var pubSlaveThread = new Thread(() -> readPubCommandAndReply(pubSocket));
                     pubSlaveThread.start();
                 } catch (IOException e) {
@@ -185,13 +188,23 @@ public class Broker {
             while (inputLine != null) {
                 synchronizedLog(String.format("Command from publisher: %s", inputLine));
                 var split = inputLine.split(" ", 4);
-                sendMessageForTopic(split[3], split[2]);
-                pubOutStream.println("OK");
+                synchronized (publisherSockets){
+                    publisherSockets.putIfAbsent(split[0], pubSocket);
+                }
+                if ("exit".equals(split[1])){
+                    disconnectPublisherWithId(split[0]);
+                }
+                else{
+                    sendMessageForTopic(split[3], split[2]);
+                    pubOutStream.println("OK");
+                }
                 inputLine = pubInStream.readLine();
             }
         } catch (IOException e) {
-            if (!shutDown){
-                e.printStackTrace();
+            synchronized (openSockets){
+                if (!shutDown && openSockets.contains(pubSocket)){
+                    e.printStackTrace();
+                }
             }
         }
     }
@@ -207,7 +220,10 @@ public class Broker {
                 synchronized (subscriberSockets){
                     subscriberSockets.putIfAbsent(split[0], subSocket);
                 }
-                if ("sub".equals(split[1])){
+                if ("exit".equals(split[1])){
+                    disconnectSubscriberWithId(split[0]);
+                }
+                else if ("sub".equals(split[1])){
                     subscribeToTopic(split[0], split[2]);
                 }
                 else {
@@ -217,8 +233,10 @@ public class Broker {
                 inputLine = subInStream.readLine();
             }
         } catch (IOException e) {
-            if (!shutDown){
-                e.printStackTrace();
+            synchronized (openSockets){
+                if (!shutDown && openSockets.contains(subSocket)){
+                    e.printStackTrace();
+                }
             }
         }
     }
@@ -255,10 +273,39 @@ public class Broker {
                 var clientOutStream = new PrintWriter(subSocket.getOutputStream(), true);
                 clientOutStream.println(String.format("%s %s", topic, message));
             } catch (IOException e) {
+
                 if (!shutDown){
                     e.printStackTrace();
                 }
             }
         });
+    }
+
+    private static void disconnectPublisherWithId(String id){
+        synchronized (publisherSockets){
+            var socket = publisherSockets.remove(id);
+            if (socket != null){
+                closeSocket(socket, String.format("Failed to disconnect publisher with id: '%s'", id));
+                synchronized (openSockets){
+                    openSockets.remove(socket);
+                }
+            }
+        }
+        synchronizedLog(String.format("Freed resources of publisher with id: %s", id));
+    }
+
+    private static void disconnectSubscriberWithId(String id){
+
+        synchronized (subscriberSockets) {
+            var socket = subscriberSockets.remove(id);
+            synchronized (topicSubscribers) {
+                topicSubscribers.forEach((k, v) -> v.remove(id));
+                synchronized (openSockets) {
+                    openSockets.remove(socket);
+                    closeSocket(socket, String.format("Failed to disconnect subscriber with id: '%s'", id));
+                }
+            }
+        }
+        synchronizedLog(String.format("Freed resources of subscriber with id: %s", id));
     }
 }
