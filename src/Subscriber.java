@@ -53,13 +53,13 @@ public class Subscriber {
         List<String> commands = commandFile == null ? List.of()
                 : readCommandsFromFile(commandFile);
         try (var cmdScanner = new Scanner(System.in)){
+            System.out.printf("Subscriber with id: '%s' is up!%n", id);
             brokerSocket = new Socket(brokerIp, brokerPort, InetAddress.getLocalHost(), port);
             sendCommandsFromFileToBroker(commands, brokerSocket);
 
             var readOnPortThread = new Thread(readOnPortRunnable());
             readOnPortThread.start();
 
-            System.out.printf("Subscriber with id: '%s' is up!%n", id);
 
             System.out.println("\nPlease enter a command in the following format: <SUB_ID COMMAND TOPIC>");
             var userInput = cmdScanner.nextLine();
